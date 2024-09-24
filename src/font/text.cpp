@@ -317,8 +317,21 @@ point pango_text::get_column_line(const point& position) const
 	}
 }
 
+int pango_text::xy_to_index(const point& position) const
+{
+	this->recalculate();
+
+	// Get the index of the character.
+	int index, trailing;
+	pango_layout_xy_to_index(layout_.get(), position.x * PANGO_SCALE,
+		position.y * PANGO_SCALE, &index, &trailing);
+
+	return index;
+}
+
 void pango_text::add_attribute_size(const unsigned start_offset, const unsigned end_offset, int size)
 {
+	size = prefs::get().font_scaled(size) * pixel_scale_;
 	attribute_start_offset_ = start_offset;
 	attribute_end_offset_ = end_offset;
 
@@ -433,7 +446,7 @@ void pango_text::add_attribute_font_family(const unsigned start_offset, const un
 	}
 }
 
-void pango_text::set_highlight_area(const unsigned start_offset, const unsigned end_offset, const color_t& color) {
+void pango_text::add_attribute_bg_color(const unsigned start_offset, const unsigned end_offset, const color_t& color) {
 	attribute_start_offset_ = start_offset;
 	attribute_end_offset_ = end_offset;
 	highlight_color_ = color;

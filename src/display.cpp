@@ -26,9 +26,11 @@
 #include "draw_manager.hpp"
 #include "fake_unit_manager.hpp"
 #include "filesystem.hpp"
+#include "floating_label.hpp"
 #include "font/sdl_ttf_compat.hpp"
 #include "font/text.hpp"
 #include "global.hpp"
+#include "gui/core/event/handler.hpp" // is_in_dialog
 #include "preferences/preferences.hpp"
 #include "halo.hpp"
 #include "hotkey/command_executor.hpp"
@@ -40,7 +42,6 @@
 #include "play_controller.hpp" //note: this can probably be refactored out
 #include "reports.hpp"
 #include "resources.hpp"
-#include "show_dialog.hpp"
 #include "synced_context.hpp"
 #include "team.hpp"
 #include "terrain/builder.hpp"
@@ -115,17 +116,17 @@ static int get_zoom_levels_index(unsigned int zoom_level)
 	return std::distance(zoom_levels.begin(), iter);
 }
 
-void display::add_overlay(const map_location& loc, const std::string& img, const std::string& halo, const std::string& team_name, const std::string& item_id, bool visible_under_fog, float submerge, float z_order)
+void display::add_overlay(const map_location& loc, overlay&& ov)
 {
-	halo::handle halo_handle;
-	if(halo != "") {
-		halo_handle = halo_man_.add(get_location_x(loc) + hex_size() / 2,
-			get_location_y(loc) + hex_size() / 2, halo, loc);
-	}
-
 	std::vector<overlay>& overlays = get_overlays()[loc];
-	auto it = std::find_if(overlays.begin(), overlays.end(), [z_order](const overlay& ov) { return ov.z_order > z_order; });
-	overlays.emplace(it, img, halo, halo_handle, team_name, item_id, visible_under_fog, submerge, z_order);
+	auto pos = std::find_if(overlays.begin(), overlays.end(),
+		[new_order = ov.z_order](const overlay& existing) { return existing.z_order > new_order; });
+
+	auto inserted = overlays.emplace(pos, std::move(ov));
+	if(const std::string& halo = inserted->halo; !halo.empty()) {
+		auto [x, y] = get_location_rect(loc).center();
+		inserted->halo_handle = halo_man_.add(x, y, halo, loc);
+	}
 }
 
 void display::remove_overlay(const map_location& loc)
@@ -2345,7 +2346,7 @@ void display::queue_rerender()
 		}
 	}
 
-	if (!gui::in_dialog()) {
+	if(!gui2::is_in_dialog()) {
 		labels().recalculate_labels();
 	}
 
