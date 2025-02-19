@@ -1411,17 +1411,33 @@ void console_handler::do_refresh()
 
 void console_handler::do_droid()
 {
-	// :droid [<side> [on/off/full]]
-	const std::string side_s = get_arg(1);
+	// :droid [side] [on/off/full]
+	std::string side_s = get_arg(1);
 	std::string action = get_arg(2);
+	utils::string_map symbols;
+	// deal with the possibly skipped side param, give more convenience
+	if(side_s[0] < '0' || side_s[0] > '9') {
+		if(action == "") {
+			action = side_s;
+			side_s = "";
+		} else {
+			symbols["side"] = side_s;
+			command_failed(VGETTEXT("No such side: ‘$side’.", symbols));
+		}
+	}
 	std::transform(action.begin(), action.end(), action.begin(), tolower);
+	// force taking over AI or not
+	bool force = false;
+	if (action == "force") {
+		force = true;
+		action = "off";
+	}
 	// default to the current side if empty
-	const unsigned int side = side_s.empty() ? team_num_ : lexical_cast_default<unsigned int>(side_s);
+	// To observers, their side normally is 0. It needs to be changed to currently playing team for `force` to work if it's used
+	const unsigned int side = side_s.empty() ? (force ? static_cast<int>(menu_handler_.gui_->playing_team().side()) : team_num_) : lexical_cast_default<unsigned int>(side_s);
 	const bool is_your_turn = menu_handler_.pc_.current_side() == static_cast<int>(menu_handler_.gui_->viewing_team().side());
 
-	utils::string_map symbols;
 	symbols["side"] = std::to_string(side);
-
 	if(side < 1 || side > menu_handler_.pc_.get_teams().size()) {
 		command_failed(VGETTEXT("Can’t droid invalid side: ‘$side’.", symbols));
 		return;
@@ -1453,9 +1469,16 @@ void console_handler::do_droid()
 				print(get_cmd(), VGETTEXT("Side ‘$side’ is already droided.", symbols));
 			}
 		} else if(action == "off") {
-			if(is_ai && !is_your_turn) {
-				command_failed(_("It is not allowed to change a side from AI to human control when it’s not your turn."));
-				return;
+			if(!force) {
+				if(!is_your_turn) {
+					command_failed(_("It is not allowed to change a side from AI to human control when it’s not your turn."));
+					return;
+				}
+				// avoid controlling AI when observing
+				if(is_ai) {
+					command_failed(_("Use ‘force’ to control a fully AI controlled side."));
+					return;
+				}
 			}
 			if(!is_human || !is_proxy_human) {
 				menu_handler_.board().get_team(side).make_human();
@@ -1485,9 +1508,16 @@ void console_handler::do_droid()
 				print(get_cmd(), VGETTEXT("Side ‘$side’ is already fully AI controlled.", symbols));
 			}
 		} else if(action == "") {
-			if(is_ai && !is_your_turn) {
-				command_failed(_("It is not allowed to change a side from AI to human control when it’s not your turn."));
-				return;
+			if(!force) {
+				if(!is_your_turn) {
+					command_failed(_("It is not allowed to change a side from AI to human control when it’s not your turn."));
+					return;
+				}
+				// avoid controlling AI when observing
+				if(is_ai) {
+					command_failed(_("Use ‘force’ to control a fully AI controlled side."));
+					return;
+				}
 			}
 			if(is_ai || is_droid) {
 				menu_handler_.board().get_team(side).make_human();
@@ -1507,7 +1537,7 @@ void console_handler::do_droid()
 				print(get_cmd(), VGETTEXT("Side ‘$side’ controller is now controlled by: AI.", symbols));
 			}
 		} else {
-			print(get_cmd(), VGETTEXT("Invalid action provided for side ‘$side’. Valid actions are: on, off, full.", symbols));
+			print(get_cmd(), VGETTEXT("Invalid action provided for side ‘$side’. Valid actions are: on, off, full, force.", symbols));
 		}
 
 		if(team_num_ == side && changed) {
